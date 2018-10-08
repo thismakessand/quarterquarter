@@ -3,11 +3,11 @@ quarterquarter
 
 Break up square-ish polygons into quarters (4), quarter-quarters (16), or quarter-quarter-quarters (64).
 
-quarters:  
+quarters (``--operation q``):  
 ![quarters.png](quarters.png)  
-quarter-quarters:  
+quarter-quarters (``--operation qq``):  
 ![quarter_quarters.png](quarter_quarters.png)  
-quarter-quarter-quarters:  
+quarter-quarter-quarters (``--operation qqq``):  
 ![quarter_quarter_quarters.png](quarter_quarter_quarters.png)  
 
 #### CLI usage:
