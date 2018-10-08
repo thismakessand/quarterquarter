@@ -1,0 +1,12 @@
+# have to start from the base-notebook so we aren't mixing conda channels when installing packages...
+# kept running into errors in fiona due to the above
+# https://github.com/jupyter/docker-stacks
+FROM jupyter/base-notebook
+
+USER $NB_UID
+
+# install conda packages
+RUN conda install --yes -c conda-forge \
+	geopandas \
+	geoplot \
+	fiona

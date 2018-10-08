@@ -1,0 +1,6 @@
+fiona==1.7.13
+numpy==1.15.2
+shapely==1.7a1
+
+pytest
+matplotlib
