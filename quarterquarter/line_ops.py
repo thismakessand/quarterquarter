@@ -5,25 +5,10 @@ from math import acos, atan2, degrees
 
 from shapely.geometry.point import Point
 from shapely.geometry.linestring import LineString
-from shapely.ops import split, substring
+from shapely.ops import split
 
 
 LabeledLine = namedtuple("LabeledLine", ["label", "line"])
-
-
-def get_midpoint(line):
-    """Get the midpoint of a line (the point that is found at 50% of the total distance of the line).
-
-    :param line: The line to calculate the midpoint of
-    :type line: shapely.geometry.linestring.LineString
-    :return: The midpoint of the line
-    :rtype: shapely.geometry.point.Point
-    """
-    #midpoint = substring(line, 0, 0.5, normalized=True).coords[-1]
-    midpoint = line.interpolate(0.5, normalized=True)
-    logging.debug("Calculated midpoint: {}".format(midpoint))
-    # return Point(midpoint)
-    return midpoint
 
 
 def cut(line, distance):
@@ -56,12 +41,6 @@ def split_line(line):
     :param line:
     :return:
     """
-    # getting the midpoint and then splitting at that point doesn't work due to floating point errors -
-    # the midpoint does NOT always intersect the line
-
-    # midpoint = get_midpoint(line)
-    # assert midpoint.intersects(line)  # this fails for some lines
-    # return split(line, midpoint)
     halves = cut(line, distance=line.length/2)
     logging.debug(halves)
     return halves
@@ -82,7 +61,12 @@ def calculate_angle(a, b, c):
     ab = LineString((a, b)).length
     bc = LineString((b, c)).length
     ac = LineString((a, c)).length
-    return degrees(acos((ab**2 + bc**2 - ac**2)/(2 * ab * bc)))
+    try:
+        angle = degrees(acos((ab**2 + bc**2 - ac**2)/(2 * ab * bc)))
+    except ValueError:
+        logging.debug('AB: {}, BC: {}, AC: {}'.format(ab, bc, ac))
+        raise
+    return angle
 
 
 def classify_line(angle):
@@ -139,3 +123,18 @@ def classify_lines(lines):
         classified_lines.append(LabeledLine(label, line))
 
     return classified_lines
+
+
+def split_intersection(a, b):
+    """Return geometry collections of line a split by line b and line b split by line a.
+
+    :param a:
+    :type a: shapely.geometry.linestring.LineString
+    :param b:
+    :type b: shapely.geometry.linestring.LineString
+    :return:
+    :rtype: tuple
+    """
+    split_a = split(a, b)
+    split_b = split(b, a)
+    return split_a, split_b

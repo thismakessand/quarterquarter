@@ -7,9 +7,9 @@ from shapely.geometry.multipoint import MultiPoint
 from shapely.geometry.linestring import LineString
 from shapely.geometry.multilinestring import MultiLineString
 from shapely.geometry.polygon import orient
-from shapely.ops import split, linemerge
+from shapely.ops import split, linemerge, unary_union
 
-from .line_ops import classify_lines, split_line, calculate_angle
+from .line_ops import classify_lines, split_line, calculate_angle, split_intersection
 
 LabeledPolygon = namedtuple("LabeledPolygon", ["label", "polygon"])
 
@@ -39,9 +39,10 @@ def split_to_lines(polygon):
             c = vertices[1]
         angle = calculate_angle(a, b, c)
         if MIN_ANGLE < angle < MAX_ANGLE:
+            logging.debug("Adding breakpoint: {}".format(angle))
             breakpoints.append(b)
     if len(breakpoints) != 4:
-        raise Exception("Expecting 4 breakpoints for polygon, only found {}!".format(len(breakpoints)))
+        raise Exception("Expecting 4 breakpoints for polygon, found {}!".format(len(breakpoints)))
     logging.debug(breakpoints)
     lines = split(asLineString(polygon.exterior.coords), MultiPoint(breakpoints))
     return lines
@@ -80,38 +81,44 @@ def quarter(polygon):
     """
     label, polygon = polygon.label, polygon.polygon
     try:
+        if polygon.type == 'MultiPolygon':
+            logging.debug("Multipolygon found, attemping to convert to polygon...")
+            polygon = unary_union(polygon)
+            if polygon.type == 'MultiPolygon':
+                raise Exception("Unable to convert multipolygon to polygon (disjoint)")
+
         polygon = orient(polygon, sign=-1.0)  # set orientation to clockwise
 
         lines = split_to_lines(polygon)
         labeled_lines = classify_lines(lines)
-        logging.info(labeled_lines)
 
         north_lines = split_line(linemerge(MultiLineString([l.line for l in labeled_lines if l.label == "N"])))
         east_lines = split_line(linemerge(MultiLineString([l.line for l in labeled_lines if l.label == "E"])))
         south_lines = split_line(linemerge(MultiLineString([l.line for l in labeled_lines if l.label == "S"])))
         west_lines = split_line(linemerge(MultiLineString([l.line for l in labeled_lines if l.label == "W"])))
 
-        # TODO add intersection of lines
-        center_vertical = split_line(LineString((north_lines[0].coords[-1], south_lines[0].coords[-1])))  # straight line between midpoint of north line and midpoint of south line
-        center_horizontal = split_line(LineString((west_lines[0].coords[-1], east_lines[0].coords[-1])))  # straight line between midpoint of west line and midpoint of east line
+        # split the inner lines at their intersection
+        center_vertical = LineString((north_lines[0].coords[-1], south_lines[0].coords[-1]))  # straight line between midpoint of north line and midpoint of south line
+        center_horizontal = LineString((west_lines[0].coords[-1], east_lines[0].coords[-1]))  # straight line between midpoint of west line and midpoint of east line
+        center_verticals, center_horizontals = split_intersection(center_vertical, center_horizontal)
 
         nw_polygon = LabeledPolygon(
             label="NW" + label,
-            polygon=MultiLineString((north_lines[0], center_vertical[0], center_horizontal[0], west_lines[1])).convex_hull
+            polygon=MultiLineString((north_lines[0], center_verticals[0], center_horizontals[0], west_lines[1])).convex_hull
         )
         ne_polygon = LabeledPolygon(
             label="NE" + label,
-            polygon=MultiLineString((north_lines[1], center_vertical[0], center_horizontal[1], east_lines[0])).convex_hull
+            polygon=MultiLineString((north_lines[1], center_verticals[0], center_horizontals[1], east_lines[0])).convex_hull
         )
         sw_polygon = LabeledPolygon(
             label="SW" + label,
-            polygon=MultiLineString((south_lines[1], center_vertical[1], center_horizontal[0], west_lines[0])).convex_hull
+            polygon=MultiLineString((south_lines[1], center_verticals[1], center_horizontals[0], west_lines[0])).convex_hull
         )
         se_polygon = LabeledPolygon(
             label="SE" + label,
-            polygon=MultiLineString((south_lines[0], center_vertical[1], center_horizontal[1], east_lines[1])).convex_hull
+            polygon=MultiLineString((south_lines[0], center_verticals[1], center_horizontals[1], east_lines[1])).convex_hull
         )
 
         return [nw_polygon, ne_polygon, sw_polygon, se_polygon]
-    except:
-        logging.error("Unable to process polygon! {}".format(polygon))
+    except Exception as e:
+        logging.error("Unable to process polygon! {}; {}".format(polygon, e))
